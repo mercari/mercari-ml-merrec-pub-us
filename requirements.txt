@@ -1,0 +1,7 @@
+pandas
+scikit-learn
+tqdm
+torch
+tensorboard
+packaging
+pyarrow

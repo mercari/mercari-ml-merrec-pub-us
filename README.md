@@ -2,7 +2,7 @@
 
 <img src='assets/logo.png' width='400'/>
 
-This repository contains the experiment code for running example model benchmarks and data processing that accompanies the paper "MerRec: A Large-scale Multipurpose Mercari Dataset for Consumer-to-Consumer Recommendation Systems". This repository is only an example demonstration of how the MerRec dataset can be used in terms of recommendation tasks, and does not depict or reflect production implementation at Mercari.
+This repository contains the experiment code for running example model benchmarks and data processing that accompanies the paper [MerRec: A Large-scale Multipurpose Mercari Dataset for Consumer-to-Consumer Recommendation Systems](https://arxiv.org/abs/2402.14230). This repository is only an example demonstration of how the MerRec dataset can be used in terms of recommendation tasks, and does not depict or reflect production implementation at Mercari.
 
 # Benchmark Execution
 
@@ -114,10 +114,23 @@ python main_ctr_mtl.py --task_name=mtl --seed=100 --model_name=esmm --data_path=
 python main_ctr_mtl.py --task_name=mtl --seed=100 --model_name=mmoe --data_path='data/mtl_product.csv' --train_batch_size=4096 --val_batch_size=4096 --test_batch_size=4096 --epochs=20 --lr=0.0001 --embedding_size=32 --mtl_task_num=2
 ```
 
+# BibTeX
+
+```bibtex
+@misc{li2024merrec,
+      title={MerRec: A Large-scale Multipurpose Mercari Dataset for Consumer-to-Consumer Recommendation Systems}, 
+      author={Lichi Li and Zainul Abi Din and Zhen Tan and Sam London and Tianlong Chen and Ajay Daptardar},
+      year={2024},
+      eprint={2402.14230},
+      archivePrefix={arXiv},
+      primaryClass={cs.IR}
+}
+```
+
 # License
 
 - Codebase: This codebase is licensed under the MIT license.
-- Dataset: The MerRec dataset is licensed under a [CC BY-NC 4.0 International](https://creativecommons.org/licenses/by-nc/4.0/legalcode.en).
+- Dataset: The [MerRec dataset](https://huggingface.co/datasets/mercari-us/merrec) is licensed under [CC BY-NC 4.0 International](https://creativecommons.org/licenses/by-nc/4.0/legalcode.en).
 
 # How to Contribute
 

@@ -114,6 +114,20 @@ python main_ctr_mtl.py --task_name=mtl --seed=100 --model_name=esmm --data_path=
 python main_ctr_mtl.py --task_name=mtl --seed=100 --model_name=mmoe --data_path='data/mtl_product.csv' --train_batch_size=4096 --val_batch_size=4096 --test_batch_size=4096 --epochs=20 --lr=0.0001 --embedding_size=32 --mtl_task_num=2
 ```
 
+## Model Inference Acceleration
+
+Skip-SASRec
+
+```bash
+python main.py --task_name=inference_acc --seed=5 --model_name=sas4infacc --data_path='data/20230501' --train_batch_size=32 --val_batch_size=32 --test_batch_size=1 --epochs=20 --lr=0.0001 --hidden_size=64 --block_num=8 --embedding_size=64 --num_heads=4 --is_pretrain=1
+```
+
+Skip-NextItNet
+
+```bash
+python main.py --task_name=inference_acc --seed=5 --model_name=skiprec --data_path='data/20230501' --train_batch_size=32 --val_batch_size=32 --test_batch_size=1 --epochs=20 --lr=0.0001 --hidden_size=128 --block_num=8 --embedding_size=128 --dilation=1,4 --kernel_size=3 --is_pretrain=1
+```
+
 # BibTeX
 
 ```bibtex

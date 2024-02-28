@@ -15,7 +15,13 @@ from model_def.bert4rec import BERTModel
 from model_def.gru4rec import GRU4Rec
 from model_def.nextitnet import NextItNet
 from model_def.sasrec import SASRec
-from train import train_val_schedular, validator
+from model_def.sas4infacc import SAS4infaccModel, SAS_PolicyNetGumbel
+from model_def.skiprec import SkipRec, PolicyNetGumbel
+from train import train_val_schedular, validator, inference_acc_schedular, paired_validator
+
+
+def list_of_ints(arg):
+    return [int(i) for i in arg.split(',')]
 
 
 def parse_args(description):
@@ -53,7 +59,7 @@ def parse_args(description):
     
     # nextitnet
     parser.add_argument("--block_num", type=int, default=8)
-    parser.add_argument("--dilations", type=int, default=[1, 4])
+    parser.add_argument("--dilations", type=list_of_ints, default=[1, 4])
     parser.add_argument("--kernel_size", type=int, default=3)
 
     # eval params
@@ -64,12 +70,35 @@ def parse_args(description):
     # transfer learning
     parser.add_argument('--is_pretrain', type=int, default=1, help='0: mean transfer, 1: mean pretrain, 2:mean train full model without transfer')
 
+    # inference acceleration
+    parser.add_argument('--temp', type=int, default=7)
  
     args = parser.parse_args()
     return args
 
 
+def get_model(args):
+    if args.model_name == 'nextitnet':
+        model = NextItNet(args=args)
+    elif args.model_name == 'bert4rec':
+        model = BERTModel(args)
+    elif args.model_name == 'gru4rec':
+        model = GRU4Rec(args)
+    elif args.model_name == 'sasrec':
+        model = SASRec(args)
+    elif args.model_name == 'skiprec':
+        model = (SkipRec(args), PolicyNetGumbel(args))
+    elif args.model_name == 'sas4infacc':
+        model = (SAS4infaccModel(args), SAS_PolicyNetGumbel(args))
+    return model
+
+
 def main(args):
+    if args.task_name not in ['sequence', 'inference_acc']:
+        raise ValueError("Invalid task option.")
+    if args.model_name == 'inference_acc':
+        args.test_batch_size = 1
+
     rng = random.Random(args.seed)
     writer = SummaryWriter()
     print("Model Name: ", args.model_name)
@@ -107,33 +136,62 @@ def main(args):
         test_dataset, batch_size=args.test_batch_size, is_parallel=args.is_parallel, is_train=False
     )
 
-    if args.model_name == 'nextitnet':
-        model = NextItNet(args=args)
-    elif args.model_name == 'bert4rec':
-        model = BERTModel(args)
-    elif args.model_name == 'gru4rec':
-        model = GRU4Rec(args)
-    elif args.model_name == 'sasrec':
-        model = SASRec(args)
-    model = model.to(args.device)
+    # Task specific model loading
+    if args.task_name == 'sequence':
+        model = get_model(args).to(args.device)
+    elif args.task_name == 'inference_acc':
+        backbonenet, policynet = get_model(args)
+        backbonenet = backbonenet.to(args.device)
+        policynet = policynet.to(args.device)
 
     since = time.time()
-    _ = train_val_schedular(args.epochs, model, train_loader, val_loader, writer, args)
+    if args.task_name == 'sequence':
+        _ = train_val_schedular(args.epochs, model, train_loader, val_loader, writer, args)
+    elif args.task_name == 'inference_acc':
+        _,_ = inference_acc_schedular(args.epochs, backbonenet, policynet, train_loader, val_loader, writer, args)
     print("Total time to train: ", time.time() - since)
 
     if args.eval:
-        best_model = torch.load(
-            os.path.join(
-                args.save_path, 
-                '{}_{}_seed{}_is_pretrain_{}_best_model_lr{}_wd{}_block{}_hd{}_emb{}.pth'.format(
-                    args.task_name, args.model_name, args.seed, args.is_pretrain, args.lr, 
-                    args.weight_decay, args.block_num, args.hidden_size, args.embedding_size
+        if args.task_name == 'sequence':
+            best_model = torch.load(
+                os.path.join(
+                    args.save_path, 
+                    '{}_{}_seed{}_is_pretrain_{}_best_model_lr{}_wd{}_block{}_hd{}_emb{}.pth'.format(
+                        args.task_name, args.model_name, args.seed, args.is_pretrain, args.lr, 
+                        args.weight_decay, args.block_num, args.hidden_size, args.embedding_size
+                    )
                 )
             )
-        )
-        model.load_state_dict(best_model)
-        model = model.to(args.device)
-        _ = validator(0, model=model, dataloader=test_loader, writer=writer, args=args, test=False)
+            model.load_state_dict(best_model)
+            model = model.to(args.device)
+            since_val = time.time()
+            _ = validator(0, model=model, dataloader=test_loader, writer=writer, args=args, test=False)
+        elif args.task_name == 'inference_acc':
+            best_policy = torch.load(
+                os.path.join(
+                    args.save_path,
+                    '{}_{}_seed{}_lr{}_block{}_best_policynet.pth'.format(
+                        args.task_name, args.model_name, args.seed, args.lr, args.block_num
+                    )
+                )
+            )
+            best_backbone = torch.load(
+                os.path.join(
+                    args.save_path,
+                    '{}_{}_seed{}_lr{}_block{}_best_backbone.pth'.format(
+                        args.task_name, args.model_name, args.seed, args.lr, args.block_num
+                    )
+                )
+            )
+            policynet.load_state_dict(best_policy)
+            backbonenet.load_state_dict(best_backbone)
+            policynet = policynet.to(args.device)
+            backbonenet = backbonenet.to(args.device)
+            since_val = time.time()
+            metrics = paired_validator(0, backbonenet, policynet, test_loader, writer, args, test=True)
+            print(metrics)
+            print('[Inf Acc] inference_time:', backbonenet.all_time)
+        print("Total time to test: ", time.time() - since_val)
     
     writer.close()
 

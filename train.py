@@ -18,7 +18,7 @@ def trainer(epoch, model, dataloader, optimizer, writer, args):
     model.train()
     running_loss = 0
     loss_fn = nn.CrossEntropyLoss(ignore_index=0)
-    for data in dataloader:
+    for data in tqdm(dataloader, total=len(dataloader), desc=f'Epoch: {epoch}, Training Batch', dynamic_ncols=True):
         optimizer.zero_grad()
         data = [x.to(args.device) for x in data]
         seqs, labels = data
@@ -35,8 +35,43 @@ def trainer(epoch, model, dataloader, optimizer, writer, args):
         optimizer.step()
         running_loss += loss.detach().cpu().item()
     writer.add_scalar('Train/loss', running_loss / len(dataloader), epoch)
-    print("Training CE Loss: {:.5f}".format(running_loss / len(dataloader)))
+    print(
+        "Training CE Loss: {:.5f}, gpu {:d} memory".format(
+            running_loss / len(dataloader),
+            torch.cuda.max_memory_allocated(device=None),
+        )
+    )
     return optimizer
+
+
+def paired_trainer(epoch, b_model, p_model, dataloader, b_optimizer, p_optimizer, writer, args):
+    print("+" * 20, "Train Epoch {}".format(epoch + 1), "+" * 20)
+    b_model.train()
+    p_model.train()
+    running_loss = 0
+    loss_fn = nn.CrossEntropyLoss()
+    for data in tqdm(dataloader, total=len(dataloader), desc=f'Epoch: {epoch}, Training Batch', dynamic_ncols=True):
+        b_optimizer.zero_grad()
+        p_optimizer.zero_grad()
+        data = [x.to(args.device) for x in data]
+        seqs, labels = data
+        policy_action = p_model(seqs)
+        logits = b_model(seqs, policy_action)  # B x T x V
+        logits = logits.view(-1, logits.size(-1))  # (B*T) x V
+        labels = labels.view(-1)  # B*T
+        loss = loss_fn(logits, labels)
+        loss.backward()
+        p_optimizer.step()
+        b_optimizer.step()
+        running_loss += loss.detach().cpu().item()
+    writer.add_scalar('Train/loss', running_loss / len(dataloader), epoch)
+    print(
+        "Training CE Loss: {:.5f}, gpu {:d} memory".format(
+            running_loss / len(dataloader),
+            torch.cuda.max_memory_allocated(device=None),
+        )
+    )
+    return b_optimizer, p_optimizer
 
 
 def validator(epoch, model, dataloader, writer, args, test=False):
@@ -45,8 +80,7 @@ def validator(epoch, model, dataloader, writer, args, test=False):
     avg_metrics = {}
     i = 0
     with torch.no_grad():
-        tqdm_dataloader = dataloader
-        for data in tqdm_dataloader:
+        for data in tqdm(dataloader, total=len(dataloader), desc=f'Epoch: {epoch}, Validation Batch', dynamic_ncols=True):
             data = [x.to(args.device) for x in data]
             seqs, labels = data
             if test:
@@ -65,8 +99,39 @@ def validator(epoch, model, dataloader, writer, args, test=False):
         avg_metrics[key] = value / i
     print(avg_metrics)
     for k in sorted(args.metric_ks, reverse=True):
-        writer.add_scalar('Train/NDCG@{}'.format(k), avg_metrics['NDCG@%d' % k], epoch)
+        writer.add_scalar('Val/NDCG@{}'.format(k), avg_metrics['NDCG@%d' % k], epoch)
     return avg_metrics
+
+
+def paired_validator(epoch, b_model, p_model, dataloader, writer, args, test=False):
+    print("+" * 20, "Valid Epoch {}".format(epoch + 1), "+" * 20)
+    p_model.eval()
+    b_model.eval()
+    avg_metrics = {}
+    i = 0
+    with torch.no_grad():
+        for data in tqdm(dataloader, total=len(dataloader), desc=f'Epoch: {epoch}, Validation Batch', dynamic_ncols=True):
+            data = [x.to(args.device) for x in data]
+            seqs, labels = data
+            policy_action = p_model(seqs)
+            if test:
+                scores = b_model.predict(seqs, policy_action)
+            else:
+                scores = b_model(seqs, policy_action)
+            scores = scores[:, -1, :]  # B x V
+            metrics = recall_ndcg_at_k(scores, labels, args.metric_ks, args)
+            i += 1
+            for key, value in metrics.items():
+                if key not in avg_metrics:
+                    avg_metrics[key] = value
+                else:
+                    avg_metrics[key] += value
+        for key, value in avg_metrics.items():
+            avg_metrics[key] = value / i
+        print(avg_metrics)
+        for k in sorted(args.metric_ks, reverse=True):
+            writer.add_scalar('Val/NDCG@{}'.format(k), avg_metrics['NDCG@%d' % k], epoch)
+        return avg_metrics
 
 
 def train_val_schedular(epochs, model, train_loader, val_loader, writer, args):
@@ -127,6 +192,60 @@ def train_val_schedular(epochs, model, train_loader, val_loader, writer, args):
     print('train_time:', all_time)
     print('val_time:', val_all_time)
     return best_model
+
+
+def inference_acc_schedular(epochs, backbonenet, policynet, train_loader, val_loader, writer, args):
+    b_optimizer = torch.optim.Adam(backbonenet.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    p_optimizer = torch.optim.Adam(policynet.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    best_metric = all_time = val_all_time = 0
+
+    for epoch in range(epochs):
+        since = time.time()
+        paired_trainer(epoch, backbonenet, policynet, train_loader, b_optimizer, p_optimizer, writer, args)
+        tmp = time.time() - since
+        print("One Epoch Time: ", tmp)
+        all_time += tmp
+        val_since = time.time()
+
+        metrics = paired_validator(epoch, backbonenet, policynet, val_loader, writer, args)
+        val_tmp = time.time() - val_since
+        print('One epoch val: ', val_tmp)
+        val_all_time += val_tmp
+
+        i = 1
+        current_metric = metrics['NDCG@5']
+        if best_metric <= current_metric:
+            best_metric = current_metric
+            b_state_dict = backbonenet.state_dict()
+            p_state_dict = policynet.state_dict()
+            best_backbonenet = deepcopy(backbonenet)
+            best_policynet = deepcopy(policynet)
+            torch.save(
+                b_state_dict,
+                os.path.join(
+                    args.save_path,
+                    '{}_{}_seed{}_lr{}_block{}_best_backbone.pth'.format(
+                        args.task_name, args.model_name, args.seed, args.lr, args.block_num
+                    )
+                )
+            )
+            torch.save(
+                p_state_dict,
+                os.path.join(
+                    args.save_path,
+                    '{}_{}_seed{}_lr{}_block{}_best_policynet.pth'.format(
+                        args.task_name, args.model_name, args.seed, args.lr, args.block_num
+                    )
+                )
+            )
+        else:
+            i += 1
+            if i == 10:
+                print('early stop!')
+                break
+    print('train_time:', all_time)
+    print('val_time:', val_all_time)
+    return best_backbonenet, best_policynet
 
 
 def recall_ndcg_at_k(scores, labels, k_list, args):

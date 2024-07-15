@@ -128,6 +128,28 @@ Skip-NextItNet
 python main.py --task_name=inference_acc --seed=5 --model_name=skiprec --data_path='data/20230501' --train_batch_size=32 --val_batch_size=32 --test_batch_size=1 --epochs=20 --lr=0.0001 --hidden_size=128 --block_num=8 --embedding_size=128 --dilation=1,4 --kernel_size=3 --is_pretrain=1
 ```
 
+# MercaTran Implementation
+
+<img src='../assets/mercatran.png' width='700'/>
+
+This portion of the repository contains the experiment code for training Mercatran: A C2C Content Based Sequential Recommender. More details can be found in the paper [MerRec: A Large-scale Multipurpose Mercari Dataset for Consumer-to-Consumer Recommendation Systems](https://arxiv.org/abs/2402.14230) in Section 4.2.6.
+
+## Training Evaluation
+
+To train Mercatran on Mercari Dataset, download the dataset from [Huggingface](https://huggingface.co/datasets/mercari-us/merrec). The bechmark results reported in the paper correspond to the [first shard](https://huggingface.co/datasets/mercari-us/merrec/tree/main/20230501) of the dataset.
+
+Install the necessary requirements.
+```bash
+cd mercatran
+pip install -r requirements.txt
+```
+
+Run the training and evaluation script. Note: only the data path is required. Refer to `config.py` for default parameters used in the benchmark results.
+
+```bash
+python3 main.py --data_path [path_to_the_data_shard]
+```
+
 # BibTeX
 
 ```bibtex

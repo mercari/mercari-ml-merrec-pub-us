@@ -1,0 +1,8 @@
+pandas
+scikit-learn
+tqdm
+torch
+tokenizers
+packaging
+pyarrow
+faiss-cpu

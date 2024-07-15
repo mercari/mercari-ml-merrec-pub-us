@@ -130,7 +130,7 @@ python main.py --task_name=inference_acc --seed=5 --model_name=skiprec --data_pa
 
 # MercaTran Implementation
 
-<img src='../assets/mercatran.png' width='700'/>
+<img src='./assets/mercatran.png' width='700'/>
 
 This portion of the repository contains the experiment code for training Mercatran: A C2C Content Based Sequential Recommender. More details can be found in the paper [MerRec: A Large-scale Multipurpose Mercari Dataset for Consumer-to-Consumer Recommendation Systems](https://arxiv.org/abs/2402.14230) in Section 4.2.6.
 

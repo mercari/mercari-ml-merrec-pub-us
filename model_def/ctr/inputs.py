@@ -183,7 +183,7 @@ def embedding_lookup(X, sparse_embedding_dict, sparse_input_dict, sparse_feature
             sparse_embedding_dict: nn.ModuleDict, {embedding_name: nn.Embedding}
             sparse_input_dict: OrderedDict, {feature_name:(start, start+dimension)}
             sparse_feature_columns: list, sparse features
-            return_feat_list: list, names of feature to be returned, defualt () -> return all features
+            return_feat_list: list, names of feature to be returned, default () -> return all features
             mask_feat_list, list, names of feature to be masked in hash transform
         Return:
             group_embedding_dict: defaultdict(list)

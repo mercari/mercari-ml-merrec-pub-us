@@ -1,0 +1,49 @@
+FROM pytorch/torchserve:latest-gpu
+
+# install dependencies
+RUN python3 -m pip install --upgrade pip
+RUN pip3 install tokenizers
+RUN pip3 install nvgpu
+
+
+USER model-server
+
+# copy model definition, custom handler base files and config.properities
+COPY ./mercatran_handler_base.py /home/model-server/
+COPY ./mercatran_handler_item.py /home/model-server/
+COPY ./base_model.py /home/model-server/
+COPY ./model_config.py /home/model-server/
+COPY ./mercatran.py /home/model-server/
+COPY ./embed.py /home/model-server/
+COPY ./config.properties /home/model-server/
+
+# copy model resources to the contianer 
+# make sure model and tokenizer files exist in the build context
+# note that model file and tokenizer file isn't checked in here
+COPY ./model.pt /home/model-server/
+COPY ./tokenizer.json /home/model-server/
+
+# expose health, prediction and metrics listener ports from the image
+EXPOSE 7080
+EXPOSE 7081
+EXPOSE 7082
+
+# create model archive file packaging model artifacts and dependencies
+RUN torch-model-archiver -f \
+  --model-name=mercatran_item \
+  --model-file=mercatran.py \
+  --version=1.0 \
+  --serialized-file=/home/model-server/model.pt \
+  --handler=/home/model-server/mercatran_handler_item.py \
+  --extra-files "/home/model-server/tokenizer.json,/home/model-server/mercatran_handler_base.py,/home/model-server/model_config.py,/home/model-server/base_model.py,/home/model-server/embed.py" \
+  --export-path=/home/model-server/model-store
+
+# run Torchserve HTTP serve to respond to prediction requests
+CMD ["torchserve", \
+     "--start", \
+     "--ts-config=/home/model-server/config.properties", \
+     "--models", \
+     "mercatran_item=mercatran_item.mar", \
+     "--model-store", \
+     "/home/model-server/model-store"]
+

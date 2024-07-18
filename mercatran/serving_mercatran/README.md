@@ -1,7 +1,7 @@
 # Serving MercaTran using Torchserve
 To serve MercaTran, we create custom containers running Torchserve model server
 which can be deployed on public cloud platforms like Vertex AI. 
-Our framework embeds both users and items, hence we create two containers for Mercatran serving. 
+Our framework embeds both users and items, hence we create two containers for MercaTran serving. 
 
 ### Create a model that can be deployed with Torchserve
 To create a model that can run in a Torch model server, it needs:
@@ -11,7 +11,7 @@ from the [base handler](https://github.com/pytorch/serve/blob/master/ts/torch_ha
 The default [text](https://github.com/pytorch/serve/blob/master/ts/torch_handler/text_handler.py) and 
 [vision handlers](https://github.com/pytorch/serve/blob/master/ts/torch_handler/vision_handler.py) provided in Torchserve can also be used for simpler applications. For this project, we create a base custom handler (`merrec_handler_base.py`) which is used as a base class for both user and item models.
 
-2. Model files (`.pth`) and other files like (`vocab.pt`) etc.
+2. Model files (`.pth`) and other files like (`vocab.pt`) (`tokenizer.json` in our case), etc.
 
 The following command can be used to create a model archive for Torchserve. In this project, however, we perform
 this action in the docker container itself. Refer to [Torchserve Examples](https://github.com/pytorch/serve/tree/master/examples/text_classification) for full details.
@@ -62,7 +62,8 @@ expected by each container.
 Note: The model in its current config supports a batch size of 128, this can be changed in the `model_config.py`. 
 Requests smaller than 128, are padded server side to run the inference, however the server will return 
 the results for only the original request.
-Note: The embedding dimension is 64 currently.
+Note: The embedding dimension is 64 currently. To change this, the model will need to be re-trained with a new embedding size.
+Refer to `D_MODEL` in `config.py` of the training pipeline.
 
 User Portion of MercaTran
 ```python
@@ -106,6 +107,7 @@ data_user = {
 r = requests.post(
     "http://0.0.0.0:7080/predictions/mercatran_user", json=data_user)
 timesteps = r.json()["predictions"][0]
+# user endpoint has 4 timesteps
 for timestep in timesteps:
     print("TimeStep: ", timestep)
     print("Embedding: ", timesteps[timestep])
@@ -152,6 +154,7 @@ data_item = {
 r = requests.post(
     "http://0.0.0.0:7080/predictions/mercatran_item", json=data_item)
 timesteps = r.json()["predictions"][0]
+# item endoint has 1 timestep
 for timestep in timesteps:
     print("TimeStep: ", timestep)
     print("Embedding: ", timesteps[timestep])

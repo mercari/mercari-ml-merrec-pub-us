@@ -9,7 +9,7 @@ import pandas as pd
 import pytz
 import datetime as dt
 import sys
-from argparse import ArgumentParser
+from argparse import ArgumentParser, BooleanOptionalAction
 
 
 MIN_SEQ_LEN = 8
@@ -56,12 +56,15 @@ def glob_local_parquets(local_dir_path):
     return glob.glob(f"{local_dir_path}/*.parquet")
 
 
-def parse_args(description):
+def parse_args(description, argv=None):
     parser = ArgumentParser(description=description)
     parser.add_argument('--local_dir_path', default='./data/20230501')
     parser.add_argument('--out_path', default='./data/mtl_product.csv')
-    parser.add_argument("--use_product_id", type=bool, default=True, help="True:use product_id, False:use item_id.")
-    args = parser.parse_args()
+    # BooleanOptionalAction gives --use_product_id / --no-use_product_id.
+    # (`type=bool` turned any non-empty string, including "False", into True.)
+    parser.add_argument("--use_product_id", action=BooleanOptionalAction, default=True,
+                        help="Use product_id (default) or item_id (--no-use_product_id) in the history window.")
+    args = parser.parse_args(argv)
     return args
 
 
@@ -76,10 +79,19 @@ def main(args):
 
     # Fetch local parquet file paths
     parquet_file_paths = glob_local_parquets(args.local_dir_path)
-    
+    if not parquet_file_paths:
+        raise FileNotFoundError(
+            f"No .parquet files found in '{args.local_dir_path}'. "
+            "Download the data first, e.g. `python merrec_data.py --month 20230501`."
+        )
+
+    # Start from a clean output file so re-running does not append duplicate rows.
+    if os.path.exists(args.out_path):
+        os.remove(args.out_path)
+
     # Read and merge parquet files
     df = pd.concat([pd.read_parquet(f) for f in parquet_file_paths])
-    df = df[df.sequence_length>=8]
+    df = df[df.sequence_length >= MIN_SEQ_LEN]
     df.sort_values(by=["user_id", "sequence_id", "stime"], ascending=True, inplace=True)
     print(f"Merged Dataframe size: {df.shape}.")
 
@@ -101,8 +113,10 @@ def main(args):
             event_id = event["event_id"]
             event_cells = [0] * len(event_id_map)
             event_cells[event_id_map[event_id]] = 1
-            product_id = product_id_map.get(event["product_id"], len(product_id_map))
-            color_id = color_id_map.get(event["color"], len(color_id_map))
+            # setdefault inserts unseen keys; `.get(key, len(map))` never updated the map,
+            # so every product_id and color was encoded as 0.
+            product_id = product_id_map.setdefault(event["product_id"], len(product_id_map))
+            color_id = color_id_map.setdefault(event["color"], len(color_id_map))
             row = [
                 user_id,
                 sequence_id,

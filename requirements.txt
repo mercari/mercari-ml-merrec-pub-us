@@ -5,3 +5,5 @@ torch
 tensorboard
 packaging
 pyarrow
+pytz
+huggingface_hub

@@ -4,6 +4,29 @@
 
 This repository contains the experiment code for running example model benchmarks and data processing that accompanies the paper [MerRec: A Large-scale Multipurpose Mercari Dataset for Consumer-to-Consumer Recommendation Systems](https://arxiv.org/abs/2402.14230). This repository is only an example demonstration of how the MerRec dataset can be used in terms of recommendation tasks, and does not depict or reflect production implementation at Mercari.
 
+# Getting the Data
+
+Install the dependencies, then download a month of the [MerRec dataset](https://huggingface.co/datasets/mercari-us/merrec) into `data/<month>/`, which is the path used by the commands below:
+
+```bash
+pip install -r requirements.txt
+
+# Full month used in the benchmarks (~300 shards, roughly 25-30 GB)
+python merrec_data.py --month 20230501
+
+# Or a small sample for a quick try (first 5 shards, ~400 MB)
+python merrec_data.py --month 20230501 --num_shards 5
+```
+
+Available months: `20230501`, `20230601`, `20230701`, `20230801`, `20230901`, `20231001`. A partial download is only a sample: sequences can span shards, so use the full month to reproduce the paper's numbers.
+
+# Running Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests -q
+```
+
 # Benchmark Execution
 
 ## Session-based Recommendation (SBR)
@@ -43,6 +66,14 @@ Based on `product_id`:
 ```bash
 python preprocess_mtl.py --out_path='data/mtl_product.csv' --local_dir_path='data/20230501'
 ```
+
+Based on `item_id` instead:
+
+```bash
+python preprocess_mtl.py --no-use_product_id --out_path='data/mtl_item.csv' --local_dir_path='data/20230501'
+```
+
+The output file is overwritten on each run.
 
 ## Click-through Rate (CTR) Prediction
 
